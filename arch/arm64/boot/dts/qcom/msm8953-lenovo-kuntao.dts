@@ -48,14 +48,16 @@
 
 		homepage {
 			label = "Home";
-			gpios = <&tlmm 47 GPIO_ACTIVE_LOW>;
+			gpios = <&tlmm 132 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_HOMEPAGE>;
+			debounce-interval = <15>;
 		};
 
 		key-volume-up {
 			label = "Volume Up";
 			gpios = <&tlmm 85 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
+			debounce-interval = <15>;
 		};
 	};
 
@@ -82,30 +84,116 @@
 		regulator-boot-on;
 	};
 
-	vci_disp: vci-disp-regulator {
+	vcc_1v8: camera-avdd-1v8 {
 		compatible = "regulator-fixed";
-        enable-active-high;
-		regulator-name = "vci_disp";
-		regulator-min-microvolt = <3000000>;
-		regulator-max-microvolt = <3000000>;
-		vin-supply = <&vph_pwr>;
-		gpio = <&tlmm 96 GPIO_ACTIVE_HIGH>;
-		startup-delay-us = <300>;
-        regulator-always-on;
-        regulator-boot-on;
-	};
-
-	vio_disp: vio-disp-regulator {
-		compatible = "regulator-fixed";
-        enable-active-high;
-		regulator-name = "vio_disp";
+		regulator-name = "vcc_1v8";
 		regulator-min-microvolt = <1800000>;
 		regulator-max-microvolt = <1800000>;
-		vin-supply = <&pm8953_l6>;
-		gpio = <&tlmm 33 GPIO_ACTIVE_HIGH>;
-		startup-delay-us = <300>;
-        regulator-always-on;
-        regulator-boot-on;
+		regulator-always-on;
+	};
+
+	vcc_1v2: camera-dvdd-1v2 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_1v2";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		regulator-always-on;
+	};
+
+	vcc_2v8: camere-dovdd-2v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_2v8";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		regulator-always-on;
+	};
+};
+
+&camss {
+	vdda-supply = <&pm8953_s3>;
+	status = "okay";
+
+	ports {
+		port@0 {
+			reg = <0>;
+			csiphy1_ep: endpoint {
+				clock-lanes = <7>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&rear_cam_ep>;
+			};
+		};
+		port@1 {
+			reg = <1>;
+			csiphy2_ep: endpoint {
+				clock-lanes = <7>;
+				data-lanes = <0 1>;
+				remote-endpoint = <&front_cam_ep>;
+			};
+		};
+	};
+};
+
+&cci {
+	pinctrl-names = "default";
+	pinctrl-0 = <&cci0_default>,
+		    <&cci1_default>,
+		    <&camss_mclk0_default>,
+		    <&camss_mclk1_default>;
+
+	status = "okay";
+};
+
+&cci_i2c0 {
+	imx258: camera@6c {
+		compatible = "sony,imx258";
+		reg = <0x6c>;
+		clocks = <&gcc GCC_CAMSS_MCLK0_CLK>;
+		assigned-clocks = <&gcc GCC_CAMSS_MCLK0_CLK>;
+		clock-frequency = <24000000>;
+
+		vana-supply = <&pm8953_l12>;
+		vdig-supply = <&pm8953_l23>;
+		vif-supply = <&pm8953_l6>;
+
+		port {
+			rear_cam_ep: endpoint {
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&csiphy1_ep>;
+				link-frequencies = /bits/ 64 <320000000>;
+			};
+		};
+	};
+};
+
+&cci_i2c1 {
+	ov5695: camera@36 {
+		compatible = "ovti,ov5695";
+		reg = <0x36>;
+
+		clocks = <&gcc GCC_CAMSS_MCLK1_CLK>;
+		clock-names = "xvclk";
+		clock-rates = <19200000>;
+
+		pinctrl-0 = <&cam_sensor_front_default>;
+		pinctrl-names = "default";
+
+		reset-gpios = <&tlmm 129 GPIO_ACTIVE_LOW>;
+
+		avdd-supply = <&vcc_1v8>;
+		dvdd-supply = <&vcc_1v2>;
+		dovdd-supply = <&vcc_2v8>;
+
+		orientation = <0>;
+
+		status = "okay";
+
+		port {
+			front_cam_ep: endpoint {
+				data-lanes = <0 1>;
+				remote-endpoint = <&csiphy2_ep>;
+				link-frequencies = /bits/ 64 <450000000>;
+			};
+		};
 	};
 };
 
@@ -117,14 +205,19 @@
 	status = "okay";
 };
 
+&lpass {
+	status = "okay";
+};
+
 &mdss {
 	status = "okay";
 };
 
 &mdss_dsi0 {
-	pinctrl-0 = <&mdss_te_default>;
-	pinctrl-names = "default";
 	status = "okay";
+
+	vdda-supply = "&pm8953_s3";
+	vddio-supply = "&pm8953_l6";
 
     panel: panel@0 {
         compatible = "smd,549-v0";
@@ -132,15 +225,6 @@
 
 		backlight = <&pmi8950_wled>;
         reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
-
-        pinctrl-names = "default", "sleep";
-        pinctrl-0 = <&pmx_mdss_default>;
-        pinctrl-1 = <&pmx_mdss_sleep>;
-
-		vci-supply = <&vci_disp>;
-		vio-supply = <&vio_disp>;
-		elvdd-supply = <&lab_vreg>;
-		elvss-supply = <&ibb_vreg>;
 
         port {
             panel_in: endpoint {
@@ -226,7 +310,6 @@
 		pm8953_l6: l6 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
-			regulator-always-on;
 		};
 
 		pm8953_l7: l7 {
@@ -285,7 +368,6 @@
 		};
 
 		pm8953_l22: l22 {
-			regulator-always-on;
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2850000>;
 		};
@@ -315,20 +397,12 @@
 &tlmm {
 	gpio-reserved-ranges = <0 4>, <135 4>;
 
-    pmx_mdss_default: pmx-mdss-default-state {
-        pins = "gpio61";
-        function = "gpio";
-        drive-strength = <8>;
-        bias-disable;
-        output-high;
-    };
-
-    pmx_mdss_sleep: pmx-mdss-sleep-state {
-        pins = "gpio61";
-        function = "gpio";
-        drive-strength = <2>;
-        bias-pull-down;
-    };
+	cam_sensor_front_default: cam_sensor_front_default {
+		pins = "gpio129";
+		function = "gpio";
+		bias-disable;
+		drive-strength = <2>;
+	};
 };
 
 &wcnss {
